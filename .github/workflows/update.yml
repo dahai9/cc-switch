@@ -1,0 +1,85 @@
+name: Update cc-switch
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get latest release
+        id: latest
+        run: |
+          release=$(curl -s https://api.github.com/repos/farion1231/cc-switch/releases/latest)
+          tag=$(echo "$release" | jq -r '.tag_name')
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Get current version
+        id: current
+        run: |
+          current=$(grep -oP 'version = "\K[^"]+' flake.nix | head -1)
+          echo "version=$current" >> "$GITHUB_OUTPUT"
+
+      - name: Check if update needed
+        run: |
+          echo "Current: ${{ steps.current.outputs.version }}"
+          echo "Latest:  ${{ steps.latest.outputs.version }}"
+          if [ "${{ steps.current.outputs.version }}" = "${{ steps.latest.outputs.version }}" ]; then
+            echo "Already up to date."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+        id: check
+
+      - name: Download debs and compute hashes
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.latest.outputs.version }}"
+          URL_BASE="https://github.com/farion1231/cc-switch/releases/download/v${VERSION}"
+
+          echo "::group::Fetching x86_64 hash"
+          HASH_X64=$(nix hash convert --to sri sha256:$(nix-prefetch-url "${URL_BASE}/CC-Switch-v${VERSION}-Linux-x86_64.deb" 2>/dev/null))
+          echo "x86_64: $HASH_X64"
+          echo "::endgroup::"
+
+          echo "::group::Fetching arm64 hash"
+          HASH_ARM=$(nix hash convert --to sri sha256:$(nix-prefetch-url "${URL_BASE}/CC-Switch-v${VERSION}-Linux-arm64.deb" 2>/dev/null))
+          echo "arm64: $HASH_ARM"
+          echo "::endgroup::"
+
+          echo "hash_x64=$HASH_X64" >> "$GITHUB_OUTPUT"
+          echo "hash_arm=$HASH_ARM" >> "$GITHUB_OUTPUT"
+
+      - name: Update flake.nix
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.latest.outputs.version }}"
+          HASH_X64="${{ steps.hash_x64 }}"
+          HASH_ARM="${{ steps.hash_arm }}"
+
+          sed -i "s|version = \".*\";|version = \"${VERSION}\";|" flake.nix
+          sed -i "s|\"x86_64\" = \".*\";|\"x86_64\" = \"${HASH_X64}\";|" flake.nix
+          sed -i "s|\"arm64\"  = \".*\";|\"arm64\"  = \"${HASH_ARM}\";|" flake.nix
+
+      - name: Create Pull Request
+        if: steps.check.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update cc-switch to v${{ steps.latest.outputs.version }}"
+          title: "chore: update cc-switch to v${{ steps.latest.outputs.version }}"
+          body: |
+            Automated update from [farion1231/cc-switch ${{ steps.latest.outputs.tag }}](https://github.com/farion1231/cc-switch/releases/tag/${{ steps.latest.outputs.tag }})
+
+            - version: `${{ steps.current.outputs.version }}` → `${{ steps.latest.outputs.version }}`
+          branch: update/v${{ steps.latest.outputs.version }}
+          delete-branch: true
