@@ -25,7 +25,7 @@ nix profile install github:farion1231/cc-switch
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     cc-switch = {
-      url = "github:dahai9/cc-switch";
+      url = "github:dahai9/cc-switch-nix";
       inputs.nixpkgs.follows = "nixpkgs";  # use your nixpkgs to avoid duplicate deps
     };
   };
