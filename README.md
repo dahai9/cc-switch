@@ -24,7 +24,10 @@ nix profile install github:farion1231/cc-switch
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    cc-switch.url = "github:farion1231/cc-switch";
+    cc-switch = {
+      url = "github:dahai9/cc-switch";
+      inputs.nixpkgs.follows = "nixpkgs";  # use your nixpkgs to avoid duplicate deps
+    };
   };
 
   outputs = { nixpkgs, cc-switch, ... }:
@@ -35,10 +38,12 @@ nix profile install github:farion1231/cc-switch
       };
     in
     {
-      # cc-switch is now available as pkgs.cc-switch
       environment.systemPackages = [ pkgs.cc-switch ];
     };
 }
+```
+
+`inputs.nixpkgs.follows = "nixpkgs"` ensures cc-switch uses the same nixpkgs as your system, avoiding duplicate dependencies in the Nix store.
 ```
 
 ## Supported Platforms
